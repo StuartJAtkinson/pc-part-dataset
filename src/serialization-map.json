@@ -4,6 +4,7 @@
 		"Performance Core Clock": ["core_clock", true],
 		"Performance Core Boost Clock": ["boost_clock", true],
 		"TDP": ["tdp", true],
+		"Microarchitecture": ["microarchitecture", true],
 		"Integrated Graphics": ["graphics", false],
 		"SMT": ["smt", false]
 	},

@@ -11,6 +11,7 @@ import {
 	serializeNumber,
 } from './serializers'
 import type { Part, PartType, SerializationMap } from './types'
+import { SingleBar, Presets } from 'cli-progress'
 
 const BASE_URL = 'https://pcpartpicker.com/products'
 const STAGING_DIRECTORY = 'data-staging'
@@ -66,9 +67,16 @@ async function scrapeInParallel(endpoints: PartType[]) {
 		const allParts = []
 
 		try {
+			const progressBar = new SingleBar({}, Presets.shades_classic)
+			const numPages = await getNumPages(endpoint, page)
+			progressBar.start(numPages, 0)
+
 			for await (const pageParts of scrape(endpoint, page)) {
 				allParts.push(...pageParts)
+				progressBar.increment()
 			}
+
+			progressBar.stop()
 		} catch (error) {
 			console.warn(`[${endpoint}] Aborted unexpectedly:\n\t${error}`)
 
@@ -105,103 +113,137 @@ async function scrapeInParallel(endpoints: PartType[]) {
 	await cluster.close()
 }
 
+async function getNumPages(endpoint: PartType, page: Page): Promise<number> {
+	await page.goto(`${BASE_URL}/${endpoint}`)
+	const paginationEl = await page.waitForSelector('.pagination', {
+		timeout: 5000,
+	})
+
+	return await paginationEl!.$eval('li:last-child', (el) =>
+		parseInt(el.innerText)
+	)
+}
+
 async function* scrape(endpoint: PartType, page: Page): AsyncGenerator<Part[]> {
-	await page.setRequestInterception(true)
+	console.log(`Starting to scrape endpoint: ${endpoint}`);
+	await page.setRequestInterception(true);
 
 	page.on('request', (req) => {
 		switch (req.resourceType()) {
 			case 'font':
 			case 'image':
-			case 'stylesheet': {
-				req.abort()
-				break
-			}
+			case 'stylesheet':
+				req.abort();
+				break;
 			default:
-				req.continue()
+				req.continue();
 		}
-	})
+	});
 
-	await page.goto(`${BASE_URL}/${endpoint}`)
-
-	const paginationEl = await page.waitForSelector('.pagination', {
-		timeout: 5000,
-	})
-
-	// NOTE: We are banging paginationEl because Page.waitForSelector()
-	// only returns null when using option `hidden: true`, which we
-	// are not using.
-	// See: https://pptr.dev/api/puppeteer.page.waitforselector#parameters
-	const numPages = await paginationEl!.$eval('li:last-child', (el) =>
-		parseInt(el.innerText)
-	)
+	const numPages = await getNumPages(endpoint, page);
+	console.log(`Found ${numPages} pages for endpoint: ${endpoint}`);
 
 	for (let currentPage = 1; currentPage <= numPages; currentPage++) {
-		const pageProducts: Part[] = []
+		const pageProducts: Part[] = [];
 
 		if (currentPage > 1) {
-			await page.goto(`${BASE_URL}/${endpoint}/#page=${currentPage}`)
-			await page.waitForNetworkIdle()
+			await page.goto(`${BASE_URL}/${endpoint}/#page=${currentPage}`);
+			await page.waitForNetworkIdle();
 		}
 
-		const productEls = await page.$$('.tr__product')
+		const productEls = await page.$$('.tr__product');
+		console.log(`Processing page ${currentPage} of ${numPages} for endpoint: ${endpoint}`);
 
 		for (const productEl of productEls) {
-			const serialized: Part = {}
+			const serialized: Part = {};
 
-			serialized['name'] = await productEl.$eval(
-				'.td__name .td__nameWrapper > p',
-				(p) => p.innerText.replaceAll('\n', ' ')
-			)
+			try {
+				serialized['name'] = await productEl.$eval(
+					'.td__name .td__nameWrapper > p',
+					(p) => p.innerText.replaceAll('\n', ' ')
+				);
 
-			const priceText = await productEl.$eval(
-				'.td__price',
-				(td) => td.textContent
-			)
+				const priceText = await productEl.$eval(
+					'.td__price',
+					(td) => td.textContent
+				);
 
-			if (priceText == null || priceText.trim() === '')
-				serialized['price'] = null
-			else serialized['price'] = serializeNumber(priceText)
+				serialized['price'] = priceText ? serializeNumber(priceText) : null;
 
-			const specs = await productEl.$$('td.td__spec')
+				const specs = await productEl.$$('td.td__spec');
 
-			for (const spec of specs) {
-				const specName = await spec.$eval('.specLabel', (l) =>
-					(l as HTMLHeadingElement).innerText.trim()
-				)
-				const mapped = map[endpoint][specName]
+				for (const spec of specs) {
+					const specName = await spec.$eval('.specLabel', (l) =>
+						(l as HTMLHeadingElement).innerText.trim()
+					);
+					const mapped = map[endpoint][specName];
 
-				if (typeof mapped === 'undefined')
-					throw new Error(`No mapping found for spec '${specName}'`)
+					if (typeof mapped === 'undefined') {
+						console.warn(`Unknown spec '${specName}' for endpoint '${endpoint}'. Skipping...`);
+						continue; // Skip unknown specs
+					}
 
-				const [snakeSpecName, mappedSpecSerializationType] = mapped
+					const [snakeSpecName, mappedSpecSerializationType] = mapped;
 
-				const specValue = await spec.evaluate(
-					(s) => s.childNodes[1]?.textContent
-				)
+					const specValue = await spec.evaluate(
+						(s) => s.childNodes[1]?.textContent
+					);
 
-				if (specValue == null || specValue.trim() === '') {
-					serialized[snakeSpecName] = null
-				} else if (mappedSpecSerializationType === 'custom') {
-					serialized[snakeSpecName] =
-						customSerializers[endpoint]![snakeSpecName]!(specValue)
-				} else {
-					serialized[snakeSpecName] = genericSerialize(
-						specValue,
-						mappedSpecSerializationType
-					)
+					if (specValue == null || specValue.trim() === '') {
+						serialized[snakeSpecName] = null;
+					} else if (mappedSpecSerializationType === 'custom') {
+						const customSerializer = customSerializers[endpoint]?.[snakeSpecName];
+						if (customSerializer) {
+							serialized[snakeSpecName] = customSerializer(specValue);
+						} else {
+							console.warn(`No custom serializer found for '${snakeSpecName}' in endpoint '${endpoint}'.`);
+							serialized[snakeSpecName] = null; // Handle missing custom serializer
+						}
+					} else {
+						serialized[snakeSpecName] = genericSerialize(
+							specValue,
+							mappedSpecSerializationType
+						);
+					}
 				}
+
+				pageProducts.push(serialized);
+			} catch (error: any) {
+				console.error(`Error processing product: ${error.message}`);
 			}
 
-			pageProducts.push(serialized)
+			// Exit if the limit is reached
+			if (pageProducts.length >= limit) {
+				console.log(`Reached limit of ${limit} products for endpoint: ${endpoint}`);
+				break;
+			}
 		}
 
-		yield pageProducts
+		yield pageProducts;
+
+		// Exit if the limit is reached
+		if (pageProducts.length >= limit) {
+			break;
+		}
 	}
+
+	console.log(`Finished scraping endpoint: ${endpoint}`);
 }
 
 const inputEndpoints = process.argv.slice(2)
 const endpointsToScrape = inputEndpoints.length
 	? (inputEndpoints as PartType[])
 	: ALL_ENDPOINTS
+
+const limitIndex = inputEndpoints.indexOf('-n')
+let limit = Infinity // Default to Infinity
+if (limitIndex !== -1 && inputEndpoints[limitIndex + 1]) {
+	const limitValue = parseInt(inputEndpoints[limitIndex + 1] || '')
+	if (!isNaN(limitValue)) {
+		limit = limitValue // Set limit if it's a valid number
+	} else {
+		console.warn(`Invalid limit value provided. Defaulting to Infinity.`)
+	}
+}
 
 scrapeInParallel(endpointsToScrape)
