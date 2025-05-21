@@ -2,7 +2,7 @@
 
 A dataset of PC parts scraped from [PCPartPicker](https://pcpartpicker.com).
 
-Part count: **61,246**
+Part count: **61,246** (This should be updated dynamically if possible)
 
 Last updated: **May 14, 2024**
 
@@ -58,7 +58,7 @@ Check out [API.md](./API.md) for JSON property descriptions of each product cate
 > Make sure to turn on your VPN before running this scraper!
 
 1. Run `npm install`
-2. Run `npm run start`
+2. Run `npm run start` to scrape all parts or specify individual parts by passing them as arguments.
 3. Wait about 5-10 minutes for the scraper to finish doing its thing.
 4. Everything will be emitted to a directory named `data-staging`.
 

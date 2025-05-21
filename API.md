@@ -31,23 +31,24 @@
 
 ## `cpu`
 
-| Property      | Description                 | Unit (if applicable) |
-| ------------- | --------------------------- | -------------------- |
-| `core_count`  | Number of cores             |                      |
-| `core_clock`  | Core clock                  | GHz                  |
-| `boost_clock` | Boost clock                 | GHz                  |
-| `tdp`         | TDP                         | W                    |
-| `graphics`    | Integrated graphics, if any |                      |
-| `smt`         | SMT support                 |                      |
+| Property            | Description                 | Unit (if applicable) |
+| ------------------- | --------------------------- | -------------------- |
+| `core_count`        | Number of cores             |                      |
+| `core_clock`        | Core clock                  | GHz                  |
+| `boost_clock`       | Boost clock                 | GHz                  |
+| `tdp`               | TDP                         | W                    |
+| `microarchitecture` | Microarchitecture type      | W                    |
+| `graphics`          | Integrated graphics, if any |                      |
+| `smt`               | SMT support                 |                      |
 
 ## `cpu-cooler`
 
-| Property      | Description                                                                                                                      | Unit (if applicable) |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `rpm`         | Fan RPM                                                                                                                          | RPM                  |
-| `noise_level` | Noise level. May be a range. In which case, its type is `[number, number]` instead, corresponding to min and max dB respectively | dB                   |
-| `color`       | Color                                                                                                                            |                      |
-| `size`        | Radiator size                                                                                                                    | mm                   |
+| Property      | Description                                                                                                                    | Unit (if applicable) |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| `rpm`         | Fan RPM                                                                                                                        | RPM                  |
+| `noise_level` | Noise level. May be a range. In which case, its type is `[number, number]` instead, corresponding to min - max dB respectively | dB                   |
+| `color`       | Color                                                                                                                          |                      |
+| `size`        | Radiator size                                                                                                                  | mm                   |
 
 ## `motherboard`
 
